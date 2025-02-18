@@ -1,0 +1,118 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Download Instagram Media{% endblock %}
+
+{% block extra_css %}
+<style>
+    .download-form {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .url-input {
+        width: 100%;
+        padding: 12px;
+        margin: 8px 0;
+        border: 2px solid #ddd;
+        border-radius: 4px;
+        font-size: 16px;
+        transition: border-color 0.3s ease;
+    }
+
+    .url-input:focus {
+        border-color: #0066cc;
+        outline: none;
+    }
+
+    .download-btn {
+        width: 100%;
+        padding: 12px;
+        background-color: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background-color 0.3s ease;
+    }
+
+    .download-btn:hover {
+        background-color: #0052a3;
+    }
+
+    .download-btn:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+
+    .progress-bar {
+        width: 100%;
+        height: 4px;
+        background-color: #f0f0f0;
+        border-radius: 2px;
+        margin-top: 1rem;
+        overflow: hidden;
+        display: none;
+    }
+
+    .progress-bar__fill {
+        width: 0%;
+        height: 100%;
+        background-color: #0066cc;
+        transition: width 0.3s ease;
+    }
+
+    .error-message {
+        color: #dc3545;
+        margin-top: 0.5rem;
+        font-size: 14px;
+        display: none;
+    }
+
+    @media (max-width: 768px) {
+        .download-form {
+            margin: 1rem;
+            padding: 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="download-form">
+    <h1>Download Instagram Media</h1>
+    <form id="downloadForm" method="POST" action="{% url 'api:download' %}">
+        {% csrf_token %}
+        <div class="form-group">
+            <input type="url" 
+                   id="instagramUrl" 
+                   name="url" 
+                   class="url-input"
+                   placeholder="Paste Instagram URL here"
+                   required
+                   pattern="https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[\w-]+\/?">
+            <div class="error-message" id="urlError"></div>
+        </div>
+        
+        <button type="submit" 
+                class="download-btn" 
+                id="downloadBtn">
+            Download
+        </button>
+        
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-bar__fill" id="progressBarFill"></div>
+        </div>
+    </form>
+    
+    <div id="downloadResult"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/downloader.js' %}" defer></script>
+{% endblock %}

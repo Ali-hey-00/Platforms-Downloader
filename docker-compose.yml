@@ -1,0 +1,171 @@
+version: '3.8'
+
+x-logging: &default-logging
+  options:
+    max-size: "10m"
+    max-file: "3"
+  driver: json-file
+
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - BUILD_ENV=production
+    image: ${PROJECT_NAME}-web:${VERSION:-latest}
+    container_name: ${PROJECT_NAME}_web
+    command: sh -c "./scripts/wait-for-it.sh db:5432 -t 60 -- ./scripts/start-web.sh"
+    volumes:
+      - .:/app
+      - static_data:/app/static
+      - media_data:/app/media
+      - log_data:/app/logs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${PROJECT_NAME}-celery:${VERSION:-latest}
+    container_name: ${PROJECT_NAME}_celery
+    command: sh -c "./scripts/wait-for-it.sh redis:6379 -t 60 -- ./scripts/start-celery.sh"
+    volumes:
+      - .:/app
+      - media_data:/app/media
+      - log_data:/app/logs
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - C_FORCE_ROOT=true
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - backend
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  db:
+    image: postgres:15-alpine
+    container_name: ${PROJECT_NAME}_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh:ro
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${PROJECT_NAME}_redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+
+  nginx:
+    image: nginx:alpine
+    container_name: ${PROJECT_NAME}_nginx
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_data:/app/static:ro
+      - media_data:/app/media:ro
+      - log_data:/var/log/nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    networks:
+      - backend
+      - frontend
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  backend:
+    driver: bridge
+    internal: true
+  frontend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    name: ${PROJECT_NAME}_postgres_data
+  redis_data:
+    name: ${PROJECT_NAME}_redis_data
+  static_data:
+    name: ${PROJECT_NAME}_static_data
+  media_data:
+    name: ${PROJECT_NAME}_media_data
+  log_data:
+    name: ${PROJECT_NAME}_log_data
